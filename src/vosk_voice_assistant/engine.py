@@ -56,11 +56,12 @@ class VoskEngine:
         if model_path:
             self.model_path = Path(model_path)
         else:
-            self.model_path = self.config.model_paths.get(language)
-            if not self.model_path:
+            model_path_from_config = self.config.model_paths.get(language)
+            if not model_path_from_config:
                 raise ModelNotFoundError(
                     f"No model configured for language: {language}"
                 )
+            self.model_path = model_path_from_config
 
         # Validate model exists
         if not self.model_path.exists():
@@ -94,7 +95,7 @@ class VoskEngine:
         except Exception as e:
             raise AudioDeviceError(f"Failed to setup audio device: {e}") from e
 
-    def _audio_callback(self, indata, frames, time, status) -> None:
+    def _audio_callback(self, indata: bytes, frames: int, time: float, status: str) -> None:
         """Audio stream callback."""
         if status:
             logger.warning(f"Audio stream warning: {status}")
