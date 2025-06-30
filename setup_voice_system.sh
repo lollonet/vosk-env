@@ -42,7 +42,7 @@ fi
 echo
 echo "✅ Setup completato!"
 echo "🚀 Ora puoi usare:"
-echo "  • ./voice_daemon.sh start"
+echo "  • ./bin/voice_daemon.sh start"
 echo "  • voice-terminal start"  
 echo "  • claude-voice-session"
 echo "  • Voice input nel browser (Tampermonkey)"

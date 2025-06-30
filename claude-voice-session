@@ -24,7 +24,7 @@ check_deps() {
     # Voice server
     if ! nc -z localhost 8765 2>/dev/null; then
         echo -e "${RED}❌ Voice server non attivo${NC}"
-        echo -e "${YELLOW}💡 Avvia: ./voice_daemon.sh start${NC}"
+        echo -e "${YELLOW}💡 Avvia: ./bin/voice_daemon.sh start${NC}"
         return 1
     fi
     

@@ -37,7 +37,7 @@ check_dependencies() {
     # Voice daemon
     if ! nc -z localhost 8765 2>/dev/null; then
         echo -e "${RED}❌ Voice daemon non attivo${NC}"
-        echo -e "${YELLOW}💡 Avvia con: ./voice_daemon.sh start${NC}"
+        echo -e "${YELLOW}💡 Avvia con: ./bin/voice_daemon.sh start${NC}"
         return 1
     fi
     
