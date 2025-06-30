@@ -22,33 +22,30 @@ class TestCommandManager:
                 "test command": {
                     "command": ["echo", "test"],
                     "description": "Test command",
-                    "safe": True
+                    "safe": True,
                 },
                 "unsafe command": {
                     "command": ["rm", "-rf", "/"],
                     "description": "Dangerous command",
-                    "safe": False
-                }
+                    "safe": False,
+                },
             },
-            "allowed_directories": {
-                "home": "{HOME}",
-                "test_dir": "/tmp/test"
-            },
+            "allowed_directories": {"home": "{HOME}", "test_dir": "/tmp/test"},
             "search_settings": {
                 "max_query_length": 30,
-                "allowed_extensions": [".txt", ".py"]
+                "allowed_extensions": [".txt", ".py"],
             },
             "security_settings": {
                 "dangerous_chars": [";", "&"],
                 "max_input_length": 50,
-                "command_timeout": 5
-            }
+                "command_timeout": 5,
+            },
         }
 
     @pytest.fixture
     def config_file(self, sample_config):
         """Create a temporary configuration file."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(sample_config, f)
             return Path(f.name)
 
@@ -138,7 +135,7 @@ class TestCommandManager:
 
     def test_invalid_json(self):
         """Test handling of invalid JSON."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("invalid json {")
             config_path = Path(f.name)
 
@@ -153,10 +150,10 @@ class TestCommandManager:
         sample_config["voice_commands"]["new_command"] = {
             "command": ["echo", "new"],
             "description": "New command",
-            "safe": True
+            "safe": True,
         }
 
-        with open(config_file, 'w') as f:
+        with open(config_file, "w") as f:
             json.dump(sample_config, f)
 
         # Reload and check
@@ -174,11 +171,12 @@ class TestCommandManagerSingleton:
 
         assert manager1 is manager2
 
-    @patch('src.vosk_voice_assistant.command_manager._command_manager', None)
+    @patch("src.vosk_voice_assistant.command_manager._command_manager", None)
     def test_get_command_manager_creates_new_instance(self):
         """Test that get_command_manager creates new instance when needed."""
         # Clear the global instance
         from src.vosk_voice_assistant import command_manager
+
         command_manager._command_manager = None
 
         manager = get_command_manager()

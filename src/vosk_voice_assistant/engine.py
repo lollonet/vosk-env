@@ -95,7 +95,9 @@ class VoskEngine:
         except Exception as e:
             raise AudioDeviceError(f"Failed to setup audio device: {e}") from e
 
-    def _audio_callback(self, indata: bytes, frames: int, time: float, status: str) -> None:
+    def _audio_callback(
+        self, indata: bytes, frames: int, time: float, status: str
+    ) -> None:
         """Audio stream callback."""
         if status:
             logger.warning(f"Audio stream warning: {status}")

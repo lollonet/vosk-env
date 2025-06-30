@@ -1,6 +1,5 @@
 """Tests for custom exceptions."""
 
-
 from src.vosk_voice_assistant.exceptions import (
     AudioDeviceError,
     ConfigurationError,

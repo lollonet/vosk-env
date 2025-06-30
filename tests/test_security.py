@@ -108,13 +108,14 @@ class TestSecureVoiceCLI:
             check=True,
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
 
     @patch("voice_cli.subprocess.run")
     def test_execute_safe_command_timeout(self, mock_run, cli):
         """Test command timeout handling."""
         from subprocess import TimeoutExpired
+
         mock_run.side_effect = TimeoutExpired(["sleep", "20"], 10)
 
         # Should not raise exception, just log and print error
@@ -171,7 +172,7 @@ class TestSecureVoiceCLI:
             check=True,
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
 
     def test_process_voice_command_search_dangerous(self, cli):
@@ -204,11 +205,15 @@ class TestSecurityRegression:
         content = secure_cli_path.read_text()
 
         # Check for actual shell=True usage (not in comments)
-        lines = content.split('\n')
+        lines = content.split("\n")
         for line in lines:
             stripped = line.strip()
-            if 'shell=True' in stripped and not stripped.startswith('#') and not stripped.startswith('"""'):
-                if 'subprocess.run' in stripped:
+            if (
+                "shell=True" in stripped
+                and not stripped.startswith("#")
+                and not stripped.startswith('"""')
+            ):
+                if "subprocess.run" in stripped:
                     pytest.fail(f"Found shell=True in subprocess call: {line}")
 
         # Should contain explicit shell=False
@@ -224,6 +229,6 @@ class TestSecurityRegression:
         for i, line in enumerate(lines):
             if "subprocess.run" in line:
                 # Check this line and a few around it for dangerous patterns
-                context = "\n".join(lines[max(0, i-2):i+3])
+                context = "\n".join(lines[max(0, i - 2) : i + 3])
                 assert 'f"' not in context or "subprocess.run" not in context
-                assert 'f\'' not in context or "subprocess.run" not in context
+                assert "f'" not in context or "subprocess.run" not in context

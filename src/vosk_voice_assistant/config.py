@@ -13,8 +13,18 @@ class VoskConfig(BaseModel):
     sample_rate: int = Field(default=16000, description="Audio sample rate in Hz")
     model_paths: dict[str, Path] = Field(
         default_factory=lambda: {
-            "it": Path(os.getenv("VOSK_MODEL_IT", str(Path.home() / "vosk-env" / "models" / "italian"))),
-            "en": Path(os.getenv("VOSK_MODEL_EN", str(Path.home() / "vosk-env" / "models" / "english"))),
+            "it": Path(
+                os.getenv(
+                    "VOSK_MODEL_IT",
+                    str(Path.home() / "vosk-env" / "models" / "italian"),
+                )
+            ),
+            "en": Path(
+                os.getenv(
+                    "VOSK_MODEL_EN",
+                    str(Path.home() / "vosk-env" / "models" / "english"),
+                )
+            ),
         },
         description="Paths to Vosk models by language",
     )
