@@ -1,0 +1,184 @@
+#!/bin/bash
+# Voice Terminal - Voice input nel terminale (senza venv)
+
+# Colori
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+print_header() {
+    echo -e "${BLUE}🎤 Voice Input per Terminale Linux${NC}"
+    echo -e "${BLUE}====================================${NC}"
+}
+
+check_server() {
+    if ! nc -z localhost 8765 2>/dev/null; then
+        echo -e "${RED}❌ Voice server non attivo${NC}"
+        echo -e "${YELLOW}💡 Avvia con: ./voice_daemon.sh start${NC}"
+        return 1
+    fi
+    return 0
+}
+
+check_python_deps() {
+    if ! python3 -c "import websockets, asyncio" 2>/dev/null; then
+        echo -e "${RED}❌ Moduli Python mancanti${NC}"
+        echo -e "${YELLOW}💡 Installa: pip install websockets${NC}"
+        return 1
+    fi
+    return 0
+}
+
+show_help() {
+    print_header
+    echo
+    echo "Utilizzo: voice-terminal [opzione]"
+    echo
+    echo "Opzioni:"
+    echo "  start, s     - Avvia voice input terminale"
+    echo "  test, t      - Test correzioni comandi"
+    echo "  bash, b      - Bash con voice input integrato"
+    echo "  help, h      - Mostra questo aiuto"
+    echo
+    echo "Esempi comandi vocali:"
+    echo "  • 'liste la' → ls -la"
+    echo "  • 'vai in cartella documenti' → cd documenti"
+    echo "  • 'installa git' → sudo apt install git"
+    echo "  • 'git stato' → git status"
+    echo "  • 'pingi google.com' → ping google.com"
+}
+
+find_script() {
+    local script_name="$1"
+    
+    # Prova directory corrente
+    if [ -f "scripts/$script_name" ]; then
+        echo "scripts/$script_name"
+        return
+    fi
+    
+    # Prova vosk-env
+    if [ -f "$HOME/vosk-env/scripts/$script_name" ]; then
+        echo "$HOME/vosk-env/scripts/$script_name"
+        return
+    fi
+    
+    # Prova path relativo allo script
+    SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+    if [ -f "$SCRIPT_DIR/scripts/$script_name" ]; then
+        echo "$SCRIPT_DIR/scripts/$script_name"
+        return
+    fi
+    
+    echo ""
+}
+
+start_voice_terminal() {
+    print_header
+    echo
+    
+    if ! check_server || ! check_python_deps; then
+        return 1
+    fi
+    
+    VOICE_SCRIPT=$(find_script "voice_cli_terminal.py")
+    if [ -z "$VOICE_SCRIPT" ]; then
+        echo -e "${RED}❌ Script voice_cli_terminal.py non trovato${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}🚀 Avvio voice input terminale...${NC}"
+    echo
+    
+    python3 "$VOICE_SCRIPT"
+}
+
+test_corrections() {
+    print_header
+    echo
+    
+    if ! check_python_deps; then
+        return 1
+    fi
+    
+    VOICE_SCRIPT=$(find_script "voice_cli_terminal.py")
+    if [ -z "$VOICE_SCRIPT" ]; then
+        echo -e "${RED}❌ Script voice_cli_terminal.py non trovato${NC}"
+        return 1
+    fi
+    
+    python3 "$VOICE_SCRIPT" --test
+}
+
+voice_bash() {
+    print_header
+    echo
+    
+    if ! check_server; then
+        return 1
+    fi
+    
+    echo -e "${GREEN}🚀 Avvio Bash con voice input integrato...${NC}"
+    echo -e "${YELLOW}💡 Premi Ctrl+V per attivare voice input${NC}"
+    echo
+    
+    # Crea script bash temporaneo con voice input
+    cat > /tmp/voice-bash-init.sh << 'BASHEOF'
+# Voice input integration per bash
+export VOICE_ENABLED=1
+
+voice_command() {
+    echo "🎤 Voice input attivo - parla ora..."
+    # Nota: rimuovi path specifici venv
+    timeout 10 python3 -c "
+import asyncio
+import websockets
+import json
+
+async def get_voice():
+    try:
+        ws = await websockets.connect('ws://localhost:8765')
+        await ws.send(json.dumps({'type': 'start_single_capture'}))
+        async for msg in ws:
+            data = json.loads(msg)
+            if data.get('type') == 'speech_result':
+                print(data.get('text', ''))
+                break
+    except:
+        pass
+
+asyncio.run(get_voice())
+" 2>/dev/null || echo "⏰ Timeout voice input"
+}
+
+# Bind Ctrl+V per voice input
+bind '"\C-v": "$(voice_command)\e\C-e"'
+
+# Prompt personalizzato con indicatore voice
+export PS1="\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]🎤 $ "
+
+echo "✅ Voice Bash caricato!"
+echo "💡 Usa Ctrl+V per voice input"
+BASHEOF
+    
+    # Avvia bash con configurazione voice
+    bash --rcfile /tmp/voice-bash-init.sh
+}
+
+# Main
+case "${1:-help}" in
+    start|s)
+        start_voice_terminal
+        ;;
+    test|t)
+        test_corrections
+        ;;
+    bash|b)
+        voice_bash
+        ;;
+    help|h|*)
+        show_help
+        ;;
+esac

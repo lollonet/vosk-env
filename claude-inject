@@ -1,0 +1,94 @@
+#!/bin/bash
+# Claude Voice Inject - Wrapper per voice injection in sessioni Claude
+
+VOSK_DIR="$HOME/vosk-env"
+SCRIPT_PATH="$VOSK_DIR/scripts/claude_voice_inject.py"
+
+# Colori
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+show_help() {
+    echo -e "${BLUE}🎤 Claude Voice Inject${NC}"
+    echo -e "${BLUE}=====================${NC}"
+    echo
+    echo "Integra voice input nelle sessioni Claude Code attive"
+    echo
+    echo "Utilizzo:"
+    echo "  claude-inject           # Modalità hotkey continua"
+    echo "  claude-inject --quick   # Single voice capture"
+    echo
+    echo "⌨️  Hotkey (modalità continua):"
+    echo "  Ctrl+V = Voice input"
+    echo "  Ctrl+Q = Quit"
+    echo
+    echo "💡 Come usare:"
+    echo "  1. Avvia voice daemon se non attivo:"
+    echo "     ./voice_daemon.sh start"
+    echo "  2. In sessione Claude Code esegui:"
+    echo "     ./claude-inject" 
+    echo "  3. Premi Ctrl+V quando vuoi voice input"
+}
+
+check_dependencies() {
+    # Voice daemon
+    if ! nc -z localhost 8765 2>/dev/null; then
+        echo -e "${RED}❌ Voice daemon non attivo${NC}"
+        echo -e "${YELLOW}💡 Avvia con: ./voice_daemon.sh start${NC}"
+        return 1
+    fi
+    
+    # Script
+    if [ ! -f "$SCRIPT_PATH" ]; then
+        echo -e "${RED}❌ Script inject non trovato: $SCRIPT_PATH${NC}"
+        return 1
+    fi
+    
+    # Python deps
+    if ! python3 -c "import websockets, asyncio" 2>/dev/null; then
+        echo -e "${RED}❌ Dipendenze Python mancanti${NC}"
+        echo -e "${YELLOW}💡 Installa: pip install websockets${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Main
+case "${1:-run}" in
+    -h|--help|help)
+        show_help
+        ;;
+    -q|--quick)
+        if check_dependencies; then
+            cd "$VOSK_DIR"
+            source ./bin/activate 2>/dev/null || true
+            python3 "$SCRIPT_PATH" --quick
+        fi
+        ;;
+    -f|--file)
+        if check_dependencies; then
+            cd "$VOSK_DIR"
+            source ./bin/activate 2>/dev/null || true
+            echo "🎤 Voice input → file mode"
+            result=$(python3 "$SCRIPT_PATH" --quick 2>/dev/null | tail -1)
+            echo "$result" > /tmp/claude-voice-input.txt
+            echo "📁 Saved to: /tmp/claude-voice-input.txt"
+            echo "📝 Content: $result"
+        fi
+        ;;
+    run|*)
+        if check_dependencies; then
+            echo -e "${GREEN}🎤 Avvio Claude Voice Inject...${NC}"
+            echo -e "${YELLOW}💡 Usa Ctrl+V per voice input in questa sessione${NC}"
+            echo
+            
+            cd "$VOSK_DIR"
+            source ./bin/activate 2>/dev/null || true
+            python3 "$SCRIPT_PATH"
+        fi
+        ;;
+esac

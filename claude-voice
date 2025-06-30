@@ -1,0 +1,86 @@
+#!/bin/bash
+# Claude Voice - Wrapper per Claude Code con voice input
+
+VOSK_DIR="$HOME/vosk-env"
+
+# Colori
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+check_dependencies() {
+    # Verifica Claude Code
+    if ! command -v claude >/dev/null 2>&1; then
+        echo -e "${RED}❌ Claude Code non trovato${NC}"
+        echo -e "${YELLOW}💡 Installa da: https://github.com/anthropics/claude-code${NC}"
+        return 1
+    fi
+    
+    # Verifica voice server
+    if ! nc -z localhost 8765 2>/dev/null; then
+        echo -e "${RED}❌ Voice server non attivo${NC}"
+        echo -e "${YELLOW}💡 Avvia con: ./voice_daemon.sh start${NC}"
+        return 1
+    fi
+    
+    return 0
+}
+
+show_help() {
+    echo -e "${BLUE}🎤 Claude Voice - Voice Input per Claude Code${NC}"
+    echo -e "${BLUE}=============================================${NC}"
+    echo
+    echo "Utilizzo: claude-voice [opzione]"
+    echo
+    echo "Opzioni:"
+    echo "  -i, --interactive    Sessione interattiva continua"
+    echo "  -q, --quick         Prompt singolo veloce"
+    echo "  -p, --prompt TEXT   Prompt diretto (no voice)"
+    echo "  -h, --help          Mostra questo aiuto"
+    echo
+    echo "Esempi Voice Prompt:"
+    echo "  • 'spiega codice' + descrizione"
+    echo "  • 'debug errore python nel file main'"
+    echo "  • 'crea funzione che calcola fibonacci'"
+    echo "  • 'ottimizza questa query sql'"
+    echo "  • 'review codice per sicurezza'"
+    echo
+    echo "Template Disponibili:"
+    echo "  • spiega codice, debug errore, ottimizza codice"
+    echo "  • crea funzione, crea classe, crea script"
+    echo "  • review codice, sicurezza codice"
+    echo "  • test unitari, documenta funzione"
+}
+
+# Main
+if ! check_dependencies; then
+    exit 1
+fi
+
+cd "$VOSK_DIR"
+source ./bin/activate
+
+case "${1:-quick}" in
+    -i|--interactive)
+        python3 scripts/claude_voice.py --interactive
+        ;;
+    -q|--quick)
+        python3 scripts/claude_voice.py --quick
+        ;;
+    -p|--prompt)
+        if [ -z "$2" ]; then
+            echo -e "${RED}❌ Prompt richiesto dopo -p${NC}"
+            exit 1
+        fi
+        python3 scripts/claude_voice.py --prompt "$2"
+        ;;
+    -h|--help|help)
+        show_help
+        ;;
+    *)
+        # Default: quick mode
+        python3 scripts/claude_voice.py --quick
+        ;;
+esac

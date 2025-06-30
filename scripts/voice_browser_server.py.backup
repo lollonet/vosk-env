@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+import asyncio
+import websockets
+import json
+import threading
+import queue
+import re
+from pathlib import Path
+from vosk_engine import VoskEngine
+
+clients = set()
+message_queue = queue.Queue()
+current_engine = None
+engines = {}
+is_permanent_mode = False
+current_language = 'it'
+
+# Dizionario correzioni termini IT (solo per modalità italiana)
+IT_TECH_TERMS = {
+    'ghit ab': 'github', 'git ab': 'github', 'git hub': 'github', 'git ub': 'github',
+    'docher': 'docker', 'docker': 'docker',
+    'kubernet': 'kubernetes', 'cubernet': 'kubernetes', 'kubernetes': 'kubernetes',
+    'react': 'react', 'riact': 'react',
+    'nod jes': 'nodejs', 'node jes': 'nodejs', 'nodejs': 'nodejs',
+    'javascript': 'javascript', 'java script': 'javascript', 'giava script': 'javascript',
+    'python': 'python', 'paiton': 'python',
+    'typescript': 'typescript', 'type script': 'typescript', 'taip script': 'typescript',
+    'mysql': 'mysql', 'mai sequel': 'mysql',
+    'postgres': 'postgresql', 'post gres': 'postgresql', 'postgresql': 'postgresql',
+    'redis': 'redis', 'mongodb': 'mongodb', 'mongo db': 'mongodb', 'mongo di bi': 'mongodb',
+    'api': 'API', 'ei pi ai': 'API',
+    'rest': 'REST', 'rest api': 'REST API',
+    'graphql': 'GraphQL', 'graf ql': 'GraphQL', 'grafi ql': 'GraphQL',
+    'webhook': 'webhook', 'web hook': 'webhook', 'ueb hook': 'webhook',
+    'microservice': 'microservice', 'micro service': 'microservice',
+    'devops': 'DevOps', 'dev ops': 'DevOps',
+    'cicd': 'CI/CD', 'ci cd': 'CI/CD',
+    'aws': 'AWS', 'ei dobliu es': 'AWS',
+    'azure': 'Azure', 'asciur': 'Azure',
+    'google cloud': 'Google Cloud', 'gugol cloud': 'Google Cloud',
+    'frontend': 'frontend', 'front end': 'frontend',
+    'backend': 'backend', 'back end': 'backend',
+    'fullstack': 'fullstack', 'full stack': 'fullstack',
+    'framework': 'framework', 'freimwork': 'framework',
+    'library': 'library', 'libreria': 'library',
+    'debug': 'debug', 'dibag': 'debug',
+    'deploy': 'deploy', 'deploi': 'deploy', 'deployment': 'deployment',
+    'commit': 'commit', 'comit': 'commit',
+    'push': 'push', 'pus': 'push',
+    'pull': 'pull', 'pul': 'pull',
+    'merge': 'merge', 'mergi': 'merge',
+    'branch': 'branch', 'branc': 'branch',
+    'repository': 'repository', 'repo': 'repo',
+    'database': 'database', 'data base': 'database',
+    'server': 'server', 'client': 'client', 'claiment': 'client',
+    'browser': 'browser', 'brauser': 'browser',
+    'chrome': 'Chrome', 'crom': 'Chrome',
+    'firefox': 'Firefox', 'fair fox': 'Firefox',
+    'safari': 'Safari', 'safàri': 'Safari',
+    'edge': 'Edge', 'egi': 'Edge',
+    'linux': 'Linux', 'linax': 'Linux',
+    'ubuntu': 'Ubuntu', 'ubàntu': 'Ubuntu',
+    'windows': 'Windows', 'uindous': 'Windows',
+    'macos': 'macOS', 'mac os': 'macOS',
+    'android': 'Android', 'àndroid': 'Android',
+    'ios': 'iOS', 'ai os': 'iOS',
+    'css': 'CSS', 'ci es es': 'CSS',
+    'html': 'HTML', 'acca ti emme elle': 'HTML',
+    'json': 'JSON', 'geison': 'JSON',
+    'xml': 'XML', 'ics emme elle': 'XML',
+    'yaml': 'YAML', 'iamel': 'YAML',
+    'ssl': 'SSL', 'es es elle': 'SSL',
+    'https': 'HTTPS', 'acca ti ti pi es': 'HTTPS',
+    'ssh': 'SSH', 'es es acca': 'SSH',
+    'vpc': 'VPC', 'vi pi ci': 'VPC',
+    'cdn': 'CDN', 'ci di en': 'CDN',
+    'dns': 'DNS', 'di en es': 'DNS',
+    'url': 'URL', 'iu ar elle': 'URL',
+    'uri': 'URI', 'iu ar ai': 'URI',
+    'http': 'HTTP', 'acca ti ti pi': 'HTTP',
+    'tcp': 'TCP', 'ti ci pi': 'TCP',
+    'udp': 'UDP', 'iu di pi': 'UDP',
+    'ip': 'IP', 'ai pi': 'IP',
+    'lan': 'LAN', 'elle ei en': 'LAN',
+    'wan': 'WAN', 'uei ei en': 'WAN',
+    'wifi': 'Wi-Fi', 'uai fai': 'Wi-Fi',
+    'bluetooth': 'Bluetooth', 'blu tut': 'Bluetooth',
+    'usb': 'USB', 'iu es bi': 'USB',
+    'gpu': 'GPU', 'gi pi iu': 'GPU',
+    'cpu': 'CPU', 'ci pi iu': 'CPU',
+    'ram': 'RAM', 'ar ei emme': 'RAM',
+    'ssd': 'SSD', 'es es di': 'SSD',
+    'hdd': 'HDD', 'acca di di': 'HDD',
+}
+
+def correct_tech_terms(text):
+    """Corregge termini tecnici (solo per italiano)"""
+    if current_language != 'it' or not text.strip():
+        return text
+    
+    original_text = text
+    corrected_text = text.lower()
+    
+    # Correzioni dal dizionario
+    for wrong, correct in IT_TECH_TERMS.items():
+        pattern = re.compile(re.escape(wrong), re.IGNORECASE)
+        corrected_text = pattern.sub(correct, corrected_text)
+    
+    # Acronimi in uppercase
+    common_acronyms = ['api', 'rest', 'sql', 'css', 'html', 'json', 'xml', 'http', 'https', 'ssh', 'ssl', 'aws', 'cpu', 'gpu', 'ram', 'ssd', 'hdd', 'usb', 'lan', 'wan', 'dns', 'cdn', 'vpc', 'tcp', 'udp', 'ip', 'ios', 'url', 'uri']
+    
+    for acronym in common_acronyms:
+        pattern = r'\b' + re.escape(acronym) + r'\b'
+        corrected_text = re.sub(pattern, acronym.upper(), corrected_text, flags=re.IGNORECASE)
+    
+    # Capitalizza nomi propri
+    proper_nouns = ['github', 'docker', 'kubernetes', 'react', 'nodejs', 'javascript', 'typescript', 'python', 'mysql', 'postgresql', 'mongodb', 'redis', 'graphql', 'devops', 'azure', 'chrome', 'firefox', 'safari', 'edge', 'linux', 'ubuntu', 'windows', 'macos', 'android', 'bluetooth']
+    
+    for noun in proper_nouns:
+        pattern = r'\b' + re.escape(noun) + r'\b'
+        corrected_text = re.sub(pattern, noun.capitalize(), corrected_text, flags=re.IGNORECASE)
+    
+    if corrected_text != original_text.lower():
+        print(f"🔧 Correzione IT: '{original_text}' → '{corrected_text}'")
+    
+    return corrected_text
+
+def load_engines():
+    """Carica entrambi i modelli"""
+    global engines
+    
+    models_dir = Path.home() / "vosk-env" / "models"
+    
+    # Carica modello italiano
+    try:
+        print("🔄 Caricamento modello italiano...")
+        engines['it'] = VoskEngine(str(models_dir / "italian"))
+        print("✅ Modello italiano caricato")
+    except Exception as e:
+        print(f"❌ Errore modello italiano: {e}")
+    
+    # Carica modello inglese
+    try:
+        print("🔄 Caricamento modello inglese...")
+        engines['en'] = VoskEngine(str(models_dir / "english"))
+        print("✅ Modello inglese caricato")
+    except Exception as e:
+        print(f"❌ Errore modello inglese: {e}")
+
+def switch_language(new_lang):
+    """Cambia lingua del riconoscimento"""
+    global current_engine, current_language, is_permanent_mode
+    
+    if new_lang not in engines:
+        print(f"❌ Lingua {new_lang} non disponibile")
+        return False
+    
+    if new_lang == current_language:
+        print(f"ℹ️  Già in modalità {new_lang}")
+        return True
+    
+    print(f"🔄 Switch lingua: {current_language} → {new_lang}")
+    
+    # Ferma engine corrente se attivo
+    if current_engine and is_permanent_mode:
+        current_engine.stop_listening()
+    
+    # Cambia lingua
+    current_language = new_lang
+    current_engine = engines[new_lang]
+    
+    # Riavvia se in modalità permanente
+    if is_permanent_mode:
+        threading.Thread(
+            target=lambda: current_engine.start_listening(callback=voice_callback),
+            daemon=True
+        ).start()
+    
+    # Notifica client
+    message_queue.put({
+        "type": "language_switched",
+        "language": new_lang,
+        "corrections_enabled": new_lang == 'it'
+    })
+    
+    print(f"✅ Switch completato: {new_lang.upper()}")
+    return True
+
+def voice_callback(text, confidence):
+    """Callback con correzione condizionale"""
+    if text.strip():
+        # Applica correzioni solo se in italiano
+        if current_language == 'it':
+            corrected_text = correct_tech_terms(text)
+            original = text if corrected_text != text else None
+        else:
+            corrected_text = text
+            original = None
+        
+        message_queue.put({
+            "type": "speech_result", 
+            "text": corrected_text,
+            "original_text": original,
+            "confidence": confidence,
+            "language": current_language
+        })
+
+async def handle_websocket(websocket):
+    global current_engine, is_permanent_mode, current_language
+    
+    clients.add(websocket)
+    print(f"🔗 Client connesso ({len(clients)} totali)")
+    
+    # Invia stato iniziale
+    await websocket.send(json.dumps({
+        "type": "language_status",
+        "current_language": current_language,
+        "available_languages": list(engines.keys()),
+        "corrections_enabled": current_language == 'it'
+    }))
+    
+    try:
+        async for message in websocket:
+            data = json.loads(message)
+            
+            if data.get('type') == 'start_permanent_listening':
+                is_permanent_mode = True
+                
+                current_engine = engines.get(current_language)
+                if current_engine:
+                    threading.Thread(
+                        target=lambda: current_engine.start_listening(callback=voice_callback),
+                        daemon=True
+                    ).start()
+                
+                await websocket.send(json.dumps({"type": "listening_started"}))
+                print(f"🎤 Voice input ATTIVO ({current_language.upper()})")
+                
+            elif data.get('type') == 'stop_permanent_listening':
+                is_permanent_mode = False
+                
+                if current_engine:
+                    current_engine.stop_listening()
+                
+                await websocket.send(json.dumps({"type": "listening_stopped"}))
+                print("🛑 Voice input DISATTIVATO")
+                
+            elif data.get('type') == 'switch_language':
+                requested_lang = data.get('language')
+                if switch_language(requested_lang):
+                    await websocket.send(json.dumps({
+                        "type": "language_switched",
+                        "language": current_language,
+                        "corrections_enabled": current_language == 'it'
+                    }))
+                else:
+                    await websocket.send(json.dumps({
+                        "type": "error",
+                        "message": f"Lingua {requested_lang} non disponibile"
+                    }))
+                
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    except Exception as e:
+        print(f"❌ Errore client: {e}")
+    finally:
+        clients.discard(websocket)
+        print(f"🔌 Client disconnesso ({len(clients)} rimasti)")
+
+async def message_sender():
+    """Invia messaggi ai client"""
+    while True:
+        try:
+            msg = message_queue.get_nowait()
+            if clients:
+                disconnected = set()
+                for client in clients:
+                    try:
+                        await client.send(json.dumps(msg))
+                    except:
+                        disconnected.add(client)
+                clients.difference_update(disconnected)
+        except queue.Empty:
+            await asyncio.sleep(0.1)
+
+async def main():
+    global current_language, current_engine
+    
+    print("🚀 Voice Input Server con Switch Lingua + Correzioni IT")
+    
+    # Carica modelli
+    load_engines()
+    
+    if not engines:
+        print("❌ Nessun modello caricato!")
+        return
+    
+    # Imposta lingua default
+    current_language = 'it' if 'it' in engines else list(engines.keys())[0]
+    current_engine = engines[current_language]
+    
+    print(f"✅ Modelli caricati: {list(engines.keys())}")
+    print(f"🌍 Lingua default: {current_language.upper()}")
+    print(f"🔧 Correzioni IT: {'ABILITATE' if current_language == 'it' else 'DISABILITATE'}")
+    
+    # Avvia message sender
+    asyncio.create_task(message_sender())
+    
+    # Avvia server
+    async with websockets.serve(handle_websocket, "localhost", 8765):
+        print("✅ Server attivo su porta 8765")
+        await asyncio.Future()
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(python:*)",
+      "Bash(chmod:*)",
+      "Bash(find:*)"
+    ],
+    "deny": []
+  }
+}
