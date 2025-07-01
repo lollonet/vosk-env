@@ -19,6 +19,12 @@ class AudioDeviceError(VoskVoiceAssistantError):
     pass
 
 
+class VoskEngineError(VoskVoiceAssistantError):
+    """Raised when there's an issue with the Vosk engine."""
+
+    pass
+
+
 class WebSocketError(VoskVoiceAssistantError):
     """Raised when there's an issue with WebSocket connection."""
 

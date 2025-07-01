@@ -42,11 +42,87 @@ class WebSocketConfig(BaseModel):
     max_size: int = Field(default=1024 * 1024, description="Maximum message size")
 
 
+class TextCorrectionConfig(BaseModel):
+    """Configuration for text correction mappings."""
+
+    it_tech_terms: dict[str, str] = Field(
+        default_factory=lambda: {
+            "ghit ab": "github",
+            "git ab": "github",
+            "git hub": "github",
+            "docher": "docker",
+            "kubernet": "kubernetes",
+            "react": "react",
+            "nod jes": "nodejs",
+            "javascript": "javascript",
+            "python": "python",
+            "api": "API",
+            "ei pi ai": "API",
+            "rest": "REST",
+        },
+        description="Italian tech term corrections for browser context",
+    )
+
+    linux_commands: dict[str, str] = Field(
+        default_factory=lambda: {
+            "elle es": "ls",
+            "liste": "ls",
+            "lista": "ls",
+            "liste la": "ls -la",
+            "ci di": "cd",
+            "vai in": "cd",
+            "pi uadiblu": "pwd",
+            "dove sono": "pwd",
+            "tocca": "touch",
+            "crea file": "touch",
+            "mkdir": "mkdir",
+            "copia": "cp",
+            "sposta": "mv",
+            "rimuovi": "rm",
+            "cat": "cat",
+            "mostra": "cat",
+            "grep": "grep",
+            "pi es": "ps",
+            "processi": "ps aux",
+            "top": "top",
+            "df": "df -h",
+            "spazio disco": "df -h",
+            "free": "free -h",
+            "memoria": "free -h",
+            "ping": "ping",
+            "wget": "wget",
+            "curl": "curl",
+            "git": "git",
+            "git status": "git status",
+            "stato git": "git status",
+            "git add": "git add",
+            "git commit": "git commit",
+            "git push": "git push",
+            "pus": "git push",
+            "docker": "docker",
+            "container": "docker ps",
+            "sudo": "sudo",
+            "installa": "sudo apt install",
+        },
+        description="Linux command corrections for terminal context",
+    )
+
+
+class ServerConfig(BaseModel):
+    """Configuration for server behavior."""
+
+    default_language: str = Field(default="it", description="Default language")
+    timeout_seconds: int = Field(default=30, description="Operation timeout in seconds")
+    max_clients: int = Field(default=10, description="Maximum concurrent clients")
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     vosk: VoskConfig = Field(default_factory=VoskConfig)
     websocket: WebSocketConfig = Field(default_factory=WebSocketConfig)
+    text_correction: TextCorrectionConfig = Field(default_factory=TextCorrectionConfig)
+    server: ServerConfig = Field(default_factory=ServerConfig)
 
     log_level: str = Field(default="INFO", description="Logging level")
     log_format: str = Field(
