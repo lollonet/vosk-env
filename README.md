@@ -1,93 +1,161 @@
 # Voice Assistant Project
 
-This project provides voice-activated functionalities using the Vosk engine.
+This project provides voice-activated functionalities using the Vosk engine with modern async architecture and Claude Code integration.
 
-## Code Improvement Suggestions
+## Features
 
-This section outlines key recommendations to improve the codebase's quality, maintainability, and robustness, following standard software engineering best practices.
+- 🎤 **Voice Recognition**: High-quality speech-to-text using Vosk engine
+- 🔄 **Async Architecture**: Modern async/await implementation for optimal performance
+- 🧠 **Claude Integration**: Seamless voice-to-Claude Code workflow with templates
+- 🌐 **WebSocket Server**: Real-time voice processing with multiple client support
+- 🔧 **Type Safety**: Comprehensive type hints and Pydantic configuration
+- 🛡️ **Security**: Input validation and safe command execution
+- 🌍 **Multi-language**: Support for Italian and English voice recognition
 
-### 1. Version Control with Git
+## Quick Start
 
-**Observation:** The project currently lacks a version control system, which is evident from manual backup files like `voice_browser_server.py.backup`.
-
-**Recommendation:** Initialize a Git repository.
-
-**Why:**
-- **Track Changes:** Keep a complete history of every change made to the code.
-- **Collaboration:** Simplify teamwork and prevent conflicting changes.
-- **Reversibility:** Easily revert to previous stable versions if a bug is introduced.
-- **No More Manual Backups:** Eliminate the need for messy and error-prone manual backups.
-
-**How to start:**
+### 1. Setup Environment
 ```bash
-# 1. Initialize the repository
-git init
+# Activate virtual environment
+source venv/bin/activate
 
-# 2. Create a .gitignore file to exclude unnecessary files
-# (e.g., __pycache__/, *.pyc, pyvenv.cfg, logs/, models/)
-echo "__pycache__/
-*.pyc
-pyvenv.cfg
-logs/
-models/
-" > .gitignore
-
-# 3. Add all relevant files and make the first commit
-git add .
-git commit -m "Initial commit of the voice assistant project"
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-### 2. Dependency Management
-
-**Observation:** The project uses a Python virtual environment (`venv`), which is excellent. However, it's missing a `requirements.txt` file to lock dependency versions.
-
-**Recommendation:** Generate a `requirements.txt` file.
-
-**Why:**
-- **Reproducibility:** Guarantee that the project can be set up correctly on any machine.
-- **Clarity:** Clearly define all the libraries the project depends on.
-- **Stability:** Prevent unexpected breakages caused by automatic updates of a dependency.
-
-**How to do it:**
+### 2. Start Voice Server (New Async Implementation)
 ```bash
-# Make sure your virtual environment is activated
-source bin/activate
-
-# Freeze the current state of installed packages
-pip freeze > requirements.txt
+# Start the modern async WebSocket server
+./scripts/voice_server_async.py
 ```
 
-### 3. Standard Project Structure
+### 3. Use Claude Voice Client (New Async Implementation)
+```bash
+# Interactive mode with templates
+./scripts/claude_voice_async.py
 
-**Observation:** Many scripts (`.py`, `.sh`) are located in the root directory, which can become disorganized as the project grows.
+# Quick mode for single command
+./scripts/claude_voice_async.py explain
 
-**Recommendation:** Move all Python source code into a dedicated directory, such as `src/`.
-
-**Why:**
-- **Organization:** Clearly separate the application's source code from configuration, scripts, and documentation.
-- **Navigability:** Make it easier for developers to find and understand the code.
-- **Scalability:** Provide a clean foundation for adding new features and modules.
-
-**Example Structure:**
-```
-/
-├── src/
-│   ├── __init__.py
-│   ├── server.py         # (Previously mcp_voice_server.py)
-│   ├── cli.py            # (Previously voice_cli.py)
-│   └── vosk_engine.py
-├── scripts/
-│   └── download_models.sh
-├── tests/
-│   └── test_server.py
-├── .gitignore
-├── README.md
-└── requirements.txt
+# Available templates: explain, fix, refactor, optimize, test, document, security, performance
 ```
 
-### 4. Code Quality Enhancements
+## Architecture Overview
 
-- **Centralized Configuration:** Instead of hardcoding values like model paths or server ports, use a centralized configuration mechanism. The `pydantic-settings` library (already installed) is perfect for loading settings from environment variables or a `.env` file.
-- **Structured Logging:** Replace `print()` statements used for debugging with Python's built-in `logging` module. This allows for configurable log levels (DEBUG, INFO, ERROR) and makes it easy to write logs to files.
-- **Docstrings and Type Hinting:** Add docstrings to all modules, classes, and functions to explain their purpose and usage. Use Python's type hints (e.g., `def my_function(name: str) -> bool:`) to improve code clarity and allow for static analysis tools to catch bugs early.
-- **Modularity:** Break down large files with multiple responsibilities into smaller, single-purpose modules. This improves readability, testability, and reusability.
+### Modern Structure (Post-Refactoring)
+```
+src/vosk_voice_assistant/
+├── servers/
+│   └── websocket_server.py    # Async WebSocket server
+├── clients/
+│   └── claude_client.py       # Async Claude integration
+├── config.py                  # Centralized Pydantic configuration
+├── engine.py                  # Vosk engine wrapper
+├── text_correction.py         # Context-aware text correction
+├── command_manager.py          # Safe command execution
+├── exceptions.py              # Custom exception hierarchy
+└── logging_config.py          # Structured logging
+
+scripts/
+├── voice_server_async.py      # Modern server entry point
+├── claude_voice_async.py      # Modern client entry point
+└── legacy scripts...          # Original scripts (maintained for compatibility)
+
+tests/
+└── comprehensive test suite   # 32 passing tests
+```
+
+## Configuration
+
+The project uses Pydantic for type-safe configuration with environment variable support:
+
+```bash
+# WebSocket Configuration
+export VOSK_WEBSOCKET__HOST=localhost
+export VOSK_WEBSOCKET__PORT=8765
+
+# Voice Models
+export VOSK_MODEL_IT=/path/to/italian/model
+export VOSK_MODEL_EN=/path/to/english/model
+
+# Server Settings
+export VOSK_SERVER__DEFAULT_LANGUAGE=it
+export VOSK_SERVER__TIMEOUT_SECONDS=30
+```
+
+## Usage Examples
+
+### Voice Server
+```bash
+# Start async server
+./scripts/voice_server_async.py
+
+# Server features:
+# - Multi-client WebSocket support
+# - Context-aware text correction
+# - Language switching (IT/EN)
+# - Graceful error handling
+```
+
+### Claude Voice Client
+```bash
+# Interactive mode
+./scripts/claude_voice_async.py
+
+# Quick templates
+./scripts/claude_voice_async.py explain    # Explain code
+./scripts/claude_voice_async.py fix        # Fix issues
+./scripts/claude_voice_async.py refactor   # Refactor code
+./scripts/claude_voice_async.py test       # Write tests
+```
+
+## Development
+
+### Code Quality
+```bash
+# Run tests
+pytest tests/ -v
+
+# Type checking
+mypy src/
+
+# Linting
+ruff check src/ scripts/
+
+# Auto-fix linting issues
+ruff check --fix src/ scripts/
+```
+
+### Best Practices
+This project follows the comprehensive guidelines in [`code-best-practice.md`](code-best-practice.md), including:
+- Function size ≤ 30 lines
+- Async/await for I/O operations
+- Type safety with comprehensive hints
+- Centralized configuration
+- Modular architecture
+
+## Migration Guide
+
+### From Legacy to Async Architecture
+
+**Old scripts** (still supported):
+- `scripts/voice_browser_server.py` → Use `scripts/voice_server_async.py`
+- `scripts/claude_voice.py` → Use `scripts/claude_voice_async.py`
+
+**Benefits of async version**:
+- Better performance and scalability
+- Modern WebSocket implementation
+- Type-safe configuration
+- Improved error handling
+- Template-based prompts
+
+## Contributing
+
+1. Follow the code quality guidelines in [`code-best-practice.md`](code-best-practice.md)
+2. Run tests and linting before committing
+3. Use conventional commit messages
+4. Maintain backward compatibility when possible
+
+## License
+
+This project is developed for integration with Claude Code and follows modern Python best practices.
