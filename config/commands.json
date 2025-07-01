@@ -1,0 +1,74 @@
+{
+  "voice_commands": {
+    "lista file": {
+      "command": ["ls", "-la"],
+      "description": "List files in current directory",
+      "safe": true
+    },
+    "directory corrente": {
+      "command": ["pwd"],
+      "description": "Show current directory",
+      "safe": true
+    },
+    "spazio disco": {
+      "command": ["df", "-h"],
+      "description": "Show disk space usage",
+      "safe": true
+    },
+    "processi attivi": {
+      "command": ["ps", "aux"],
+      "description": "Show running processes",
+      "safe": true
+    },
+    "memoria": {
+      "command": ["free", "-h"],
+      "description": "Show memory usage",
+      "safe": true
+    },
+    "vai su": {
+      "command": ["cd", ".."],
+      "description": "Change to parent directory",
+      "safe": true
+    },
+    "pulisci schermo": {
+      "command": ["clear"],
+      "description": "Clear terminal screen",
+      "safe": true
+    },
+    "data": {
+      "command": ["date"],
+      "description": "Show current date and time",
+      "safe": true
+    },
+    "utente": {
+      "command": ["whoami"],
+      "description": "Show current user",
+      "safe": true
+    },
+    "info sistema": {
+      "command": ["uname", "-a"],
+      "description": "Show system information",
+      "safe": true
+    }
+  },
+  "allowed_directories": {
+    "home": "{HOME}",
+    "documenti": "{HOME}/Documents",
+    "download": "{HOME}/Downloads",
+    "desktop": "{HOME}/Desktop",
+    "radice": "/",
+    "tmp": "/tmp",
+    "progetti": "{HOME}/projects",
+    "sviluppo": "{HOME}/dev"
+  },
+  "search_settings": {
+    "max_query_length": 50,
+    "allowed_extensions": [".txt", ".py", ".js", ".md", ".json", ".yaml", ".yml"],
+    "forbidden_paths": ["/etc", "/usr/bin", "/root", "/sys", "/proc"]
+  },
+  "security_settings": {
+    "dangerous_chars": [";", "&", "|", "`", "$", "(", ")", "<", ">", "\"", "'"],
+    "max_input_length": 100,
+    "command_timeout": 10
+  }
+}

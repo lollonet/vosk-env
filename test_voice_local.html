@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Voice Input Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f0f0f0; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; font-weight: bold; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .warning { background: #fff3cd; color: #856404; }
+        button { padding: 12px 24px; margin: 5px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        input, textarea { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; }
+        #log { background: #f8f9fa; padding: 15px; border: 1px solid #dee2e6; border-radius: 5px; height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Voice Input Local Test</h1>
+        
+        <div id="status" class="status info">🔄 Ready to test connection...</div>
+        
+        <div>
+            <button id="connectBtn" class="btn-primary" onclick="testConnection()">🔗 Connect to Voice Server</button>
+            <button id="testBtn" class="btn-success" onclick="testVoice()" disabled>🎤 Test Voice Input</button>
+            <button id="switchBtn" class="btn-secondary" onclick="switchLanguage()" disabled>🔄 Switch Language</button>
+            <button onclick="clearLog()" class="btn-danger">🗑️ Clear Log</button>
+        </div>
+        
+        <h3>Test Input Field:</h3>
+        <input type="text" id="testInput" placeholder="Voice input will appear here..." />
+        
+        <h3>Connection Log:</h3>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const SERVER_URL = 'ws://localhost:8765';
+        let socket = null;
+        let isConnected = false;
+        let currentLanguage = 'it';
+        
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+        
+        function updateButtons() {
+            document.getElementById('connectBtn').disabled = isConnected;
+            document.getElementById('testBtn').disabled = !isConnected;
+            document.getElementById('switchBtn').disabled = !isConnected;
+        }
+        
+        function clearLog() {
+            document.getElementById('log').textContent = '';
+        }
+        
+        async function testConnection() {
+            log('🔗 Attempting to connect to voice server...');
+            updateStatus('🔄 Connecting to voice server...', 'info');
+            
+            try {
+                socket = new WebSocket(SERVER_URL);
+                
+                socket.onopen = function(event) {
+                    log('✅ WebSocket connection successful!');
+                    updateStatus('✅ Connected to voice server', 'success');
+                    isConnected = true;
+                    updateButtons();
+                };
+                
+                socket.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        log(`📨 Received: ${data.type}`);
+                        
+                        if (data.type === 'language_status') {
+                            currentLanguage = data.current_language;
+                            updateStatus(`🌍 Connected | Language: ${currentLanguage.toUpperCase()} | Available: ${data.available_languages.join(', ')}`, 'success');
+                        }
+                        
+                        if (data.type === 'speech_result') {
+                            const input = document.getElementById('testInput');
+                            input.value += data.text + ' ';
+                            log(`🎤 Voice result: "${data.text}"`);
+                        }
+                        
+                    } catch (e) {
+                        log(`❌ Failed to parse message: ${event.data}`);
+                    }
+                };
+                
+                socket.onerror = function(error) {
+                    log(`❌ WebSocket error: ${error}`);
+                    updateStatus('❌ Connection error', 'error');
+                    isConnected = false;
+                    updateButtons();
+                };
+                
+                socket.onclose = function(event) {
+                    log(`🔌 WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`);
+                    updateStatus('🔌 Connection closed', 'warning');
+                    isConnected = false;
+                    updateButtons();
+                };
+                
+            } catch (error) {
+                log(`❌ Connection failed: ${error.message}`);
+                updateStatus('❌ Connection failed', 'error');
+                isConnected = false;
+                updateButtons();
+            }
+        }
+        
+        function testVoice() {
+            if (!isConnected) {
+                log('❌ Not connected to server');
+                return;
+            }
+            
+            log('🎤 Starting voice capture (10 seconds)...');
+            socket.send(JSON.stringify({"type": "start_single_capture"}));
+        }
+        
+        function switchLanguage() {
+            if (!isConnected) {
+                log('❌ Not connected to server');
+                return;
+            }
+            
+            const newLang = currentLanguage === 'it' ? 'en' : 'it';
+            log(`🔄 Switching language: ${currentLanguage} → ${newLang}`);
+            socket.send(JSON.stringify({
+                "type": "switch_language",
+                "language": newLang
+            }));
+        }
+        
+        // Auto-test on page load
+        window.onload = function() {
+            log('🚀 Page loaded, ready for testing');
+            log(`📍 Target server: ${SERVER_URL}`);
+            updateButtons();
+        };
+    </script>
+</body>
+</html>
