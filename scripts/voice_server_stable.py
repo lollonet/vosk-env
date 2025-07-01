@@ -146,9 +146,13 @@ class TextCorrector:
 class VoiceServer:
     """Main voice server with proper resource management"""
     
-    def __init__(self, host: str = "localhost", port: int = 8765):
+    def __init__(self, host: str = "localhost", port: int = 8765, use_large_models: bool = True, 
+                 ssl_cert: Optional[str] = None, ssl_key: Optional[str] = None):
         self.host = host
         self.port = port
+        self.use_large_models = use_large_models
+        self.ssl_cert = ssl_cert
+        self.ssl_key = ssl_key
         self.engines: Dict[str, VoiceEngine] = {}
         self.clients: Set[websockets.WebSocketServerProtocol] = set()
         self.current_language = "it"
@@ -157,6 +161,7 @@ class VoiceServer:
         self.running = False
         self._shutdown_event = asyncio.Event()
         self._listening_thread: Optional[threading.Thread] = None
+        self._main_loop: Optional[asyncio.AbstractEventLoop] = None
         
         # Load engines
         self._load_engines()
@@ -174,13 +179,22 @@ class VoiceServer:
         """Load available voice engines"""
         models_dir = Path.home() / "vosk-env" / "models"
         
-        # Use SMALL models that actually work
-        small_models = {
-            "en": "models-small-backup/vosk-model-small-en-us-0.15", 
-            "it": "models-small-backup/vosk-model-small-it-0.22"  # Use actual Italian model
-        }
+        if self.use_large_models:
+            # Use LARGE models for better recognition quality
+            models = {
+                "en": "models/english", 
+                "it": "models/italian"  # High-quality large models (2.7GB/2.0GB)
+            }
+            logger.info("🔥 Using LARGE models for maximum recognition quality")
+        else:
+            # Use SMALL models for faster loading and lower memory usage
+            models = {
+                "en": "models-small-backup/vosk-model-small-en-us-0.15", 
+                "it": "models-small-backup/vosk-model-small-it-0.22"  # Small models (68MB/88MB)
+            }
+            logger.info("⚡ Using SMALL models for fast performance")
         
-        for lang_code, model_subpath in small_models.items():
+        for lang_code, model_subpath in models.items():
             model_path = models_dir.parent / model_subpath
             if model_path.exists():
                 try:
@@ -267,7 +281,12 @@ class VoiceServer:
                     original_text=text if was_corrected else None,
                     context="browser"
                 )
-                asyncio.create_task(self._broadcast_result(result))
+                # Thread-safe way to schedule coroutine in the main event loop
+                try:
+                    if self._main_loop:
+                        asyncio.run_coroutine_threadsafe(self._broadcast_result(result), self._main_loop)
+                except Exception as e:
+                    logger.error(f"Error broadcasting result: {e}")
         
         try:
             # Start listening in a separate thread to avoid blocking
@@ -482,22 +501,39 @@ class VoiceServer:
         logger.info("🚀 Starting Voice Server")
         logger.info("=" * 50)
         logger.info(f"Host: {self.host}:{self.port}")
+        logger.info(f"Model Type: {'LARGE (High Quality)' if self.use_large_models else 'SMALL (Fast)'}")
         logger.info(f"Languages: {list(self.engines.keys())}")
         logger.info(f"Default: {self.current_language.upper()}")
         logger.info("=" * 50)
         
         self.running = True
         
+        # Store reference to main event loop for thread-safe callbacks
+        self._main_loop = asyncio.get_event_loop()
+        
         try:
+            # Setup SSL context if certificates provided
+            ssl_context = None
+            if self.ssl_cert and self.ssl_key:
+                import ssl
+                ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                ssl_context.load_cert_chain(self.ssl_cert, self.ssl_key)
+                protocol = "wss" if ssl_context else "ws"
+                logger.info(f"🔒 SSL enabled - connect via {protocol}://{self.host}:{self.port}")
+            else:
+                protocol = "ws"
+                logger.info(f"⚠️  No SSL - HTTPS sites may block connection to {protocol}://{self.host}:{self.port}")
+            
             async with websockets.serve(
                 self.handle_client,
                 self.host,
                 self.port,
+                ssl=ssl_context,
                 ping_interval=20,
                 ping_timeout=10,
                 close_timeout=10
             ):
-                logger.info(f"✅ Voice server listening on {self.host}:{self.port}")
+                logger.info(f"✅ Voice server listening on {protocol}://{self.host}:{self.port}")
                 logger.info("🎤 Ready for connections...")
                 
                 # Wait for shutdown signal
@@ -509,8 +545,50 @@ class VoiceServer:
 
 def main():
     """Main entry point"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Voice Server with Native Audio Capture")
+    parser.add_argument("--host", default="localhost", help="Server host (default: localhost)")
+    parser.add_argument("--port", type=int, default=8765, help="Server port (default: 8765)")
+    parser.add_argument("--small-models", action="store_true", 
+                       help="Use small models for faster loading (default: use large models)")
+    parser.add_argument("--ssl-cert", help="SSL certificate file for HTTPS support")
+    parser.add_argument("--ssl-key", help="SSL private key file for HTTPS support")
+    parser.add_argument("--generate-ssl", action="store_true", 
+                       help="Generate self-signed SSL certificates automatically")
+    
+    args = parser.parse_args()
+    
+    # Handle SSL certificate generation
+    ssl_cert, ssl_key = None, None
+    if args.generate_ssl:
+        import subprocess
+        import tempfile
+        import os
+        
+        cert_dir = tempfile.mkdtemp()
+        ssl_cert = os.path.join(cert_dir, "voice_server_cert.pem")
+        ssl_key = os.path.join(cert_dir, "voice_server_key.pem")
+        
+        print("🔒 Generating self-signed SSL certificate...")
+        subprocess.run([
+            "openssl", "req", "-x509", "-newkey", "rsa:2048", 
+            "-keyout", ssl_key, "-out", ssl_cert, "-days", "365", "-nodes",
+            "-subj", "/C=IT/ST=Italy/L=Local/O=VoiceServer/CN=localhost"
+        ], check=True, capture_output=True)
+        print(f"✅ SSL certificate generated: {ssl_cert}")
+        
+    elif args.ssl_cert and args.ssl_key:
+        ssl_cert, ssl_key = args.ssl_cert, args.ssl_key
+    
     try:
-        server = VoiceServer()
+        server = VoiceServer(
+            host=args.host, 
+            port=args.port, 
+            use_large_models=not args.small_models,
+            ssl_cert=ssl_cert,
+            ssl_key=ssl_key
+        )
         asyncio.run(server.run())
     except KeyboardInterrupt:
         logger.info("👋 Server stopped by user")

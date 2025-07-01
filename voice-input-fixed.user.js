@@ -13,7 +13,8 @@
     'use strict';
 
     const CONFIG = {
-        SERVER_URL: 'ws://localhost:8765',
+        SERVER_URL: window.location.protocol === 'https:' ? 'wss://localhost:8765' : 'ws://localhost:8765',
+        SERVER_URL_FALLBACK: 'ws://localhost:8765', // Fallback for certificate issues
         BUTTON_SIZE: '60px',
         POSITION: { bottom: '20px', right: '20px' },
         RECONNECT_INTERVAL: 3000,
@@ -204,10 +205,12 @@
         updateButtonState('connecting');
 
         try {
-            socket = new WebSocket(CONFIG.SERVER_URL);
+            // Try primary URL first (WSS for HTTPS sites)
+            let connectionUrl = CONFIG.SERVER_URL;
+            socket = new WebSocket(connectionUrl);
 
             socket.onopen = () => {
-                log('✅ Voice server connected successfully');
+                log(`✅ Voice server connected successfully via ${connectionUrl}`);
                 isConnected = true;
                 reconnectAttempts = 0;
                 updateButtonState('ready');
@@ -237,9 +240,24 @@
             };
 
             socket.onerror = (error) => {
-                log(`❌ WebSocket error: ${error}`);
+                log(`❌ WebSocket error with ${connectionUrl}: ${error}`);
                 isConnected = false;
-                showConnectionError('Voice server connection error');
+                
+                // If WSS fails and we're on HTTPS, try fallback to WS
+                if (connectionUrl.startsWith('wss://') && window.location.protocol === 'https:') {
+                    log('🔄 WSS failed, trying WS fallback (you may need to allow mixed content)');
+                    showConnectionError('WSS failed - trying WS fallback. Allow mixed content in browser if needed.');
+                    
+                    // Try fallback URL after short delay
+                    setTimeout(() => {
+                        if (!isConnected) {
+                            CONFIG.SERVER_URL = CONFIG.SERVER_URL_FALLBACK;
+                            connectServer();
+                        }
+                    }, 1000);
+                } else {
+                    showConnectionError('Voice server connection error');
+                }
             };
 
         } catch (error) {
