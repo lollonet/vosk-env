@@ -6,6 +6,7 @@ logging, and type safety.
 """
 
 import json
+import multiprocessing
 import queue
 import time
 from collections.abc import Callable
@@ -19,6 +20,45 @@ from .exceptions import AudioDeviceError, ModelNotFoundError
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _vosk_worker_process(model_path: str, sample_rate: int, input_queue: multiprocessing.Queue, output_queue: multiprocessing.Queue):
+    """Isolated Vosk worker process - crashes here won't affect main server."""
+    try:
+        import vosk
+        import json
+        
+        # Initialize Vosk in isolated process
+        vosk.SetLogLevel(-1)
+        model = vosk.Model(model_path)
+        recognizer = vosk.KaldiRecognizer(model, sample_rate)
+        recognizer.SetWords(True)
+        
+        while True:
+            try:
+                # Get audio data from main process
+                data = input_queue.get(timeout=1.0)
+                if data is None:  # Shutdown signal
+                    break
+                
+                # Process with Vosk - if this crashes, only this process dies
+                if recognizer.AcceptWaveform(data):
+                    result = json.loads(recognizer.Result())
+                    text = result.get("text", "").strip()
+                    confidence = result.get("confidence", 0.0)
+                    if text:
+                        output_queue.put((text, confidence))
+                        
+            except Exception:
+                # If Vosk crashes, create new recognizer
+                try:
+                    recognizer = vosk.KaldiRecognizer(model, sample_rate)
+                    recognizer.SetWords(True)
+                except:
+                    pass
+                
+    except Exception:
+        pass  # Worker process can die, main server continues
 
 
 class VoskEngine:
@@ -51,6 +91,11 @@ class VoskEngine:
         self.language = language
         self.is_listening = False
         self.audio_queue: queue.Queue[bytes] = queue.Queue()
+        
+        # Process isolation for Vosk
+        self.worker_process: multiprocessing.Process | None = None
+        self.input_queue: multiprocessing.Queue = multiprocessing.Queue()
+        self.output_queue: multiprocessing.Queue = multiprocessing.Queue()
 
         # Determine model path
         if model_path:
@@ -67,8 +112,8 @@ class VoskEngine:
         if not self.model_path.exists():
             raise ModelNotFoundError(f"Model not found: {self.model_path}")
 
-        self._initialize_vosk()
         self._setup_audio_device()
+        # Vosk initialization moved to worker process
 
         logger.info(f"VoskEngine initialized with model: {self.model_path.name}")
 
@@ -90,7 +135,7 @@ class VoskEngine:
         """Setup audio device and validate configuration."""
         try:
             device_info = sd.query_devices(kind="input")
-            logger.info(f"Audio device: {device_info['name']}")
+            logger.info(f"🎤 Selected audio device: {device_info['name']}")
             logger.info(f"Sample rate: {self.config.sample_rate}Hz")
         except Exception as e:
             raise AudioDeviceError(f"Failed to setup audio device: {e}") from e
@@ -121,6 +166,14 @@ class VoskEngine:
         self.is_listening = True
         start_time = time.time()
 
+        # Start isolated Vosk worker process
+        logger.info("🚀 Starting isolated Vosk worker process")
+        self.worker_process = multiprocessing.Process(
+            target=_vosk_worker_process,
+            args=(str(self.model_path), self.config.sample_rate, self.input_queue, self.output_queue)
+        )
+        self.worker_process.start()
+
         try:
             with sd.RawInputStream(
                 samplerate=self.config.sample_rate,
@@ -140,10 +193,18 @@ class VoskEngine:
                         break
 
                     try:
+                        # Get audio data
                         data = self.audio_queue.get(timeout=0.1)
-
-                        if self.recognizer.AcceptWaveform(data):
-                            result = self._process_recognition_result()
+                        
+                        # Send to isolated worker process
+                        try:
+                            self.input_queue.put_nowait(data)
+                        except:
+                            pass  # Queue full, skip frame
+                        
+                        # Check for results from worker
+                        try:
+                            result = self.output_queue.get_nowait()
                             if result:
                                 text, confidence = result
                                 logger.debug(f"Recognition: [{confidence:.2f}] {text}")
@@ -152,6 +213,8 @@ class VoskEngine:
                                     callback(text, confidence)
                                 else:
                                     logger.info(f"Recognized: {text}")
+                        except:
+                            pass  # No result yet
 
                     except queue.Empty:
                         continue
@@ -161,6 +224,12 @@ class VoskEngine:
         except Exception as e:
             raise AudioDeviceError(f"Audio stream error: {e}") from e
         finally:
+            # Cleanup worker process
+            if self.worker_process and self.worker_process.is_alive():
+                self.input_queue.put(None)  # Shutdown signal
+                self.worker_process.join(timeout=2)
+                if self.worker_process.is_alive():
+                    self.worker_process.terminate()
             self._finalize_recognition(callback)
 
     def _process_recognition_result(self) -> tuple[str, float] | None:
