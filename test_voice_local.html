@@ -26,6 +26,13 @@
         <div id="status" class="status info">🔄 Ready to test connection...</div>
         
         <div>
+            <label>
+                <input type="checkbox" id="sslToggle" onchange="updateServerUrl()"> Use SSL (WSS)
+            </label>
+            <span id="currentUrl" style="margin-left: 10px; font-family: monospace; color: #666;"></span>
+        </div>
+        
+        <div style="margin-top: 10px;">
             <button id="connectBtn" class="btn-primary" onclick="testConnection()">🔗 Connect to Voice Server</button>
             <button id="testBtn" class="btn-success" onclick="testVoice()" disabled>🎤 Test Voice Input</button>
             <button id="switchBtn" class="btn-secondary" onclick="switchLanguage()" disabled>🔄 Switch Language</button>
@@ -40,10 +47,34 @@
     </div>
 
     <script>
-        const SERVER_URL = 'ws://localhost:8765';
+        // Initialize variables
+        const isHTTPS = window.location.protocol === 'https:';
+        let useSSL = isHTTPS; // Default to SSL if page is HTTPS
+        let SERVER_URL = ''; // Initialize empty, will be set by updateServerUrl()
+        
         let socket = null;
         let isConnected = false;
         let currentLanguage = 'it';
+        
+        function updateServerUrl() {
+            const sslToggle = document.getElementById('sslToggle');
+            if (sslToggle) {
+                useSSL = sslToggle.checked;
+            }
+            
+            const protocol = useSSL ? 'wss:' : 'ws:';
+            SERVER_URL = `${protocol}//localhost:8765`;
+            
+            const urlSpan = document.getElementById('currentUrl');
+            if (urlSpan) {
+                urlSpan.textContent = SERVER_URL;
+            }
+            
+            return SERVER_URL;
+        }
+        
+        // Initialize SERVER_URL immediately
+        updateServerUrl();
         
         function log(message) {
             const logDiv = document.getElementById('log');
@@ -69,7 +100,11 @@
         }
         
         async function testConnection() {
+            // Always get the latest SERVER_URL
+            updateServerUrl();
+            
             log('🔗 Attempting to connect to voice server...');
+            log(`📍 Target server: ${SERVER_URL}`);
             updateStatus('🔄 Connecting to voice server...', 'info');
             
             try {
@@ -151,9 +186,16 @@
         
         // Auto-test on page load
         window.onload = function() {
+            // Initialize SSL toggle based on page protocol
+            const sslToggle = document.getElementById('sslToggle');
+            sslToggle.checked = useSSL;
+            
+            updateServerUrl();
+            updateButtons();
+            
             log('🚀 Page loaded, ready for testing');
             log(`📍 Target server: ${SERVER_URL}`);
-            updateButtons();
+            log(`🔒 SSL auto-detected: ${useSSL ? 'enabled' : 'disabled'} (based on page protocol)`);
         };
     </script>
 </body>

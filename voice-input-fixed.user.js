@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Voice Input Toggle + Language Switch (Fixed)
 // @namespace    http://tampermonkey.net/
-// @version      3.2
+// @version      3.4
 // @description  Voice input con switch lingua IT/EN + correzioni termini IT (Connection Fixed)
 // @author       VoskSpeech
 // @match        *://*/*
@@ -246,7 +246,12 @@
                 // If WSS fails and we're on HTTPS, try fallback to WS
                 if (connectionUrl.startsWith('wss://') && window.location.protocol === 'https:') {
                     log('🔄 WSS failed, trying WS fallback (you may need to allow mixed content)');
-                    showConnectionError('WSS failed - trying WS fallback. Allow mixed content in browser if needed.');
+                    showConnectionError(`
+                        WSS connection failed. Trying WS fallback...<br>
+                        <small>If this fails, you may need to:<br>
+                        1. Accept the SSL certificate at <a href="https://localhost:8765" target="_blank">https://localhost:8765</a><br>
+                        2. Or allow mixed content in your browser settings</small>
+                    `);
                     
                     // Try fallback URL after short delay
                     setTimeout(() => {
@@ -256,7 +261,11 @@
                         }
                     }, 1000);
                 } else {
-                    showConnectionError('Voice server connection error');
+                    showConnectionError(`
+                        Voice server connection error.<br>
+                        <small>Make sure voice server is running:<br>
+                        <code>./scripts/voice_server_async.py --generate-ssl</code></small>
+                    `);
                 }
             };
 
@@ -292,16 +301,27 @@
                     if (data.original_text && data.original_text !== data.text) {
                         showCorrectionFeedback(data.original_text, data.text);
                     }
+
+                    // Auto-restart single capture if in permanent mode
+                    if (isPermanentMode) {
+                        setTimeout(() => {
+                            if (isPermanentMode && isConnected) {
+                                startSingleCapture();
+                            }
+                        }, 500);
+                    }
                 }
                 break;
 
             case 'listening_started':
+            case 'single_capture_started':
                 isListening = true;
                 updateButtonState(isPermanentMode ? 'permanent' : 'listening');
                 log('🎤 Listening started');
                 break;
 
             case 'listening_stopped':
+            case 'single_capture_stopped':
                 isListening = false;
                 if (!isPermanentMode) {
                     updateButtonState('ready');
@@ -320,7 +340,18 @@
 
             case 'error':
                 log(`❌ Server error: ${data.message}`);
-                showConnectionError(`Server error: ${data.message}`);
+                
+                // If it's a timeout in permanent mode, auto-restart
+                if (isPermanentMode && data.message.includes('timeout')) {
+                    log('🔄 Timeout in permanent mode, restarting capture...');
+                    setTimeout(() => {
+                        if (isPermanentMode && isConnected) {
+                            startSingleCapture();
+                        }
+                    }, 1000);
+                } else {
+                    showConnectionError(`Server error: ${data.message}`);
+                }
                 break;
 
             default:
@@ -457,10 +488,23 @@
         isPermanentMode = true;
         highlightElement(activeElement);
 
-        socket.send(JSON.stringify({type: 'start_permanent_listening'}));
+        // Start single capture (async server doesn't support permanent mode)
+        startSingleCapture();
 
         updateButtonState('permanent');
         log(`🎤 Voice input ACTIVE (${currentLanguage.toUpperCase()})`);
+    }
+
+    function startSingleCapture() {
+        if (!isConnected) return;
+        
+        socket.send(JSON.stringify({
+            type: 'start_single_capture',
+            context: 'browser'
+        }));
+        
+        updateButtonState('listening');
+        log('🎤 Starting single voice capture...');
     }
 
     function stopPermanentMode() {
@@ -468,7 +512,7 @@
         isListening = false;
 
         if (isConnected) {
-            socket.send(JSON.stringify({type: 'stop_permanent_listening'}));
+            socket.send(JSON.stringify({type: 'stop_capture'}));
         }
 
         updateButtonState('ready');
